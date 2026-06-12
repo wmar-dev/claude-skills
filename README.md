@@ -26,3 +26,7 @@ Other targets:
 
 - `make zip [SKILL=<skill-name>]` — package skill(s) into `dist/<skill-name>.zip`
 - `make clean` — remove the `dist/` directory
+
+## References
+
+- [Agent Skills best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
