@@ -30,3 +30,4 @@ Other targets:
 ## References
 
 - [Agent Skills best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
+- [Agent Skills with Anthropic (DeepLearning.AI course)](https://www.deeplearning.ai/courses/agent-skills-with-anthropic)
