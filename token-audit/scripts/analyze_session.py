@@ -39,6 +39,10 @@ def analyze(path):
     tool_calls = {}  # tool_use_id -> (name, input)
     file_reads = defaultdict(int)
     calls_list = []  # (name, chars, detail)
+    model_usage = defaultdict(lambda: [0, 0])  # model -> [turns, output_tokens]
+    cache_resets = []  # (turn_index, cc_tokens, prev_total_tokens, cause)
+    prev_total = None
+    prev_tool_names = []
 
     with open(path) as f:
         for line in f:
@@ -53,6 +57,13 @@ def analyze(path):
             if not isinstance(msg, dict):
                 continue
 
+            content = msg.get("content")
+            cur_tool_names = []
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        cur_tool_names.append(block.get("name"))
+
             usage = msg.get("usage")
             if usage:
                 turns += 1
@@ -63,7 +74,18 @@ def analyze(path):
                 cr_sum += cr
                 final_cc, final_cr = cc, cr
 
-            content = msg.get("content")
+                model = msg.get("model")
+                if model:
+                    model_usage[model][0] += 1
+                    model_usage[model][1] += usage.get("output_tokens", 0)
+
+                total = cc + cr
+                if prev_total is not None and prev_total > 2000 and cc > 1000 and cc > prev_total * 0.5:
+                    cause = "ToolSearch" if "ToolSearch" in prev_tool_names else None
+                    cache_resets.append((turns, cc, prev_total, cause))
+                prev_total = total
+                prev_tool_names = cur_tool_names
+
             if not isinstance(content, list):
                 continue
             for block in content:
@@ -104,6 +126,8 @@ def analyze(path):
         "tool_sizes": tool_sizes,
         "calls_list": calls_list,
         "file_reads": file_reads,
+        "model_usage": model_usage,
+        "cache_resets": cache_resets,
     }
 
 
@@ -127,6 +151,19 @@ def report(stats):
         print("\nFiles Read more than once:")
         for fp, n in sorted(repeats.items(), key=lambda x: -x[1]):
             print(f"  {n}x  {fp}")
+
+    if stats["model_usage"]:
+        print("\nOutput tokens by model:")
+        for model, (n_turns, out_tok) in sorted(stats["model_usage"].items(), key=lambda x: -x[1][1]):
+            print(f"  {model:24s} {n_turns:3d} turns  ~{out_tok:>7,} output tokens")
+
+    resets = stats["cache_resets"]
+    if resets:
+        reset_tokens = sum(cc for _, cc, _, _ in resets)
+        print(f"\nMid-session cache resets: {len(resets)} (re-cached ~{reset_tokens:,} tokens total)")
+        for turn, cc, prev_total, cause in resets[:5]:
+            cause_str = f" — follows a {cause} call (new tool schema changed the cached prefix)" if cause else ""
+            print(f"  turn {turn:3d}: re-cached ~{cc:,} tokens (prior context was ~{prev_total:,}){cause_str}")
 
 
 def main():
